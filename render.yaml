@@ -3,5 +3,3 @@ services:
     name: focus-api
     env: docker
     plan: free
-    buildCommand: ""
-    startCommand: ""
