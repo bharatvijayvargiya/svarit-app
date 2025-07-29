@@ -23,6 +23,11 @@ app.add_middleware(
 class TextRequest(BaseModel):
     text: str
 
+# ADD ROOT ROUTE
+@app.get("/")
+def root():
+    return {"message": "Focus Word API is running", "endpoints": ["/get_focus_words"]}
+
 @app.post("/get_focus_words")
 def get_focus_words(data: TextRequest):
     text = data.text
