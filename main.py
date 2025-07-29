@@ -1,5 +1,6 @@
 # filename: focus_api.py
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Tuple
 import spacy
@@ -9,6 +10,15 @@ from collections import defaultdict
 nlp = spacy.load("en_core_web_sm")
 
 app = FastAPI()
+
+# Add CORS middleware here
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Change to your frontend domain in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class TextRequest(BaseModel):
     text: str
