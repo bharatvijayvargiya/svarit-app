@@ -351,9 +351,18 @@ def extract_minor_major_breaks(text: str):
             all_minor_breaks.append(minor_breaks)
             all_major_breaks.append(major_breaks)
 
+        def deduplicate(breaks):
+        seen = set()
+        unique = []
+        for sent in breaks:
+            for item in sent:
+                if item[0] not in seen:
+                    unique.append(item)
+                    seen.add(item[0])
+            return unique
+
         return {
-            'minor_breaks': all_minor_breaks,
-            'major_breaks': all_major_breaks
+            'minor_breaks': deduplicate(all_minor_breaks),
+            'major_breaks': deduplicate(all_major_breaks)
         }
-    
     return get_minor_and_major_break_indexes_with_words(text)
