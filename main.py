@@ -356,4 +356,4 @@ def extract_minor_major_breaks(text: str):
             'major_breaks': all_major_breaks
         }
     
-    get_minor_and_major_break_indexes_with_words(text)
+    return get_minor_and_major_break_indexes_with_words(text)
