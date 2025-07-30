@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Tuple
 import spacy
+import regex as re
 from collections import defaultdict
 
 # Load your model once at startup
@@ -34,7 +35,14 @@ def get_focus_words(data: TextRequest):
     focus = extract_focus_words(text)  # Use the function from earlier
     return {"focus_words": focus}
 
+@app.post("/minor_major_breaks")
+def minor_major_breaks(data: TextRequest):
+    text = data.text
+    breaks = extract_minor_major_breaks(text)  # Use the function from earlier
+    return {"minor_breaks": breaks['minor_breaks'], "major_breaks": breaks['major_breaks']}
+
 def extract_focus_words(text: str):
+
     nlp = spacy.load("en_core_web_sm")
     doc = nlp(text)
 
@@ -208,3 +216,144 @@ def extract_focus_words(text: str):
         i = j
 
     return filtered_focus
+
+def extract_minor_major_breaks(text: str):
+    # --- Heuristic lists ---
+    PREPOSITIONS = ['in', 'on', 'at', 'by', 'for', 'from', 'to', 'with', 'about',
+        'over', 'under', 'into', 'onto', 'across', 'behind', 'through',
+        'between', 'among', 'after', 'before', 'during', 'against']
+    CONJUNCTIONS = ['and', 'but', 'or', 'so', 'yet', 'for']
+    SUBORDINATE_CONJUNCTIONS = ['because', 'although', 'if', 'when', 'since', 'while', 'unless',
+        'as', 'even though', 'though', 'whereas', 'after', 'before']
+    RELATIVE_PRONOUNS = ['who', 'which', 'that', 'whom', 'whose', 'which', 'that']
+    ADVERBIAL_STARTERS = ['suddenly', 'eventually', 'quickly', 'slowly',
+        'fortunately', 'unfortunately', 'in the morning', 'in the evening',
+        'at night', 'after dinner', 'on Sunday', 'at first',
+        'as a result', 'on the other hand', 'in fact', 'to be honest', 'however', 
+        'meanwhile', 'in addition', 'furthermore', 'consequently', 'therefore', 
+        'nevertheless', 'nonetheless', 'in conclusion', 'to summarize', 'moreover']
+    TAG_QUESTIONS = ["isn't it", "don't you", "aren't they", "didn't he", "won't we",
+        "right", "okay", "is it", "doesn't she", "can't you"]
+    FILLERS = ["well", "oh", "um", "uh", "you know", "I mean", "so", "like", "actually"]
+    VOCATIVE_TITLES = ['sir', "ma'am", 'madam', 'lord', 'lady']
+    BREAK_TAGS = []
+
+    def insert_break_after_commas_semicolons(text):
+        tagged = re.sub(r'([,;])\s*', lambda m: f"{m.group(1)} <|comma|> ", text)
+        BREAK_TAGS.append("comma")
+        return tagged
+
+    def insert_breaks_conjunctions(text):
+        pattern = r'\s+(?=(' + '|'.join(CONJUNCTIONS) + r')\b)'
+        tagged = re.sub(pattern, ' <|conjunction|> ', text)
+        BREAK_TAGS.append("conjunction")
+        return tagged
+
+    def insert_breaks_prepositions(text):
+        pattern = r'(?<!^)(?<![|,.])\s+(?=(' + '|'.join(PREPOSITIONS) + r')\b)'
+        tagged = re.sub(pattern, ' <|preposition|> ', text)
+        BREAK_TAGS.append("preposition")
+        return tagged
+
+    def insert_breaks_subordinate(text):
+        pattern = r'(?<![|,.])\s+(?=(' + '|'.join(SUBORDINATE_CONJUNCTIONS) + r')\b)'
+        tagged = re.sub(pattern, ' <|subordinate|> ', text)
+        BREAK_TAGS.append("subordinate")
+        return tagged
+
+    def insert_breaks_relative(text):
+        pattern = r'(?<![|,.])\s+(?=(' + '|'.join(RELATIVE_PRONOUNS) + r')\b)'
+        tagged = re.sub(pattern, ' <|relative|> ', text)
+        BREAK_TAGS.append("relative")
+        return tagged
+
+    def insert_breaks_adverbial(text):
+        phrase_pattern = '|'.join(re.escape(p) for p in ADVERBIAL_STARTERS)
+        tagged = re.sub(r'^(?:' + phrase_pattern + r')(?=\s)', lambda m: m.group(0) + ' <|adverbial|>', text, flags=re.IGNORECASE)
+        BREAK_TAGS.append("adverbial")
+        return tagged
+
+    def insert_breaks_enumerations(text):
+        tagged = re.sub(r',\s*', ' <|enumeration|> ', text)
+        tagged = re.sub(r'(?<=\| [^|]+)\s+(and|or)\b', r' <|enumeration|> \1', tagged)
+        BREAK_TAGS.append("enumeration")
+        return tagged
+
+    def insert_breaks_vocatives(text):
+        tagged = re.sub(r'(\b[A-Z][a-z]+),', r'\1 <|vocative|>', text)
+        tagged = re.sub(r', (\b[A-Z][a-z]+\b)', r'<|vocative|> \1', tagged)
+        for title in VOCATIVE_TITLES:
+            tagged = re.sub(r'\b(' + title + r'),', r'\1 <|vocative|>', tagged, flags=re.IGNORECASE)
+            tagged = re.sub(r', (' + title + r')\b', r'<|vocative|> \1', tagged, flags=re.IGNORECASE)
+        BREAK_TAGS.append("vocative")
+        return tagged
+
+    def insert_breaks_appositives(text):
+        pattern = r'(\b\w+\b),\s+([^,]+?),\s+(\b\w+\b)'
+        replacement = r'\1 <|appositive|> \2 <|appositive|> \3'
+        prev = None
+        while prev != text:
+            prev = text
+            text = re.sub(pattern, replacement, text)
+        BREAK_TAGS.append("appositive")
+        return text
+
+    def insert_breaks_speech_patterns(text):
+        tag_pattern = r'\b(' + '|'.join(re.escape(tq) for tq in TAG_QUESTIONS) + r')\b\?'
+        text = re.sub(r'\s*' + tag_pattern, r' <|speech|> \1?', text, flags=re.IGNORECASE)
+        filler_pattern = r'\b(' + '|'.join(re.escape(f) for f in FILLERS) + r')\b'
+        text = re.sub(r'(^|\s)(' + filler_pattern + r')(\s+)', r'\1\2 <|speech|> ', text, flags=re.IGNORECASE)
+        BREAK_TAGS.append("speech")
+        return text
+
+    # --- Apply all minor break tagging heuristics ---
+    def insert_minor_breaks_with_tags(text):
+        text = insert_break_after_commas_semicolons(text)
+        text = insert_breaks_conjunctions(text)
+        text = insert_breaks_prepositions(text)
+        text = insert_breaks_subordinate(text)
+        text = insert_breaks_relative(text)
+        text = insert_breaks_adverbial(text)
+        text = insert_breaks_enumerations(text)
+        text = insert_breaks_vocatives(text)
+        text = insert_breaks_appositives(text)
+        text = insert_breaks_speech_patterns(text)
+        return text
+
+# --- Final function: get break indexes + words ---
+    def get_minor_and_major_break_indexes_with_words(text):
+        sentences = re.split(r'(?<=[.?!])\s+', text)
+        all_minor_breaks = []
+        all_major_breaks = []
+
+        offset = 0
+
+        for sentence in sentences:
+            tagged = insert_minor_breaks_with_tags(sentence)
+            tokens = tagged.split()
+            original_tokens = sentence.split()
+            minor_breaks = []
+            major_breaks = []
+
+            word_index = -1
+            for i, token in enumerate(tokens):
+                if token.startswith('<|') and token.endswith('|>'):
+                    if word_index >= 0 and word_index < len(original_tokens):
+                        minor_breaks.append((offset + word_index, original_tokens[word_index]))
+                    continue
+                word_index += 1
+
+            for i, word in enumerate(original_tokens):
+                if re.search(r'[.?!]$', word):
+                    major_breaks.append((offset + i, word))
+
+            offset += len(original_tokens)
+            all_minor_breaks.append(minor_breaks)
+            all_major_breaks.append(major_breaks)
+
+        return {
+            'minor_breaks': all_minor_breaks,
+            'major_breaks': all_major_breaks
+        }
+    
+    get_minor_and_major_break_indexes_with_words(text)
