@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Tuple
 import spacy
+import difflib
 import regex as re
 from collections import defaultdict
 
@@ -42,6 +43,26 @@ def minor_major_breaks(data: TextRequest):
     return {"minor_breaks": breaks['minor_breaks'], "major_breaks": breaks['major_breaks']}
 
 def extract_focus_words(text: str):
+    def map_spacy_indexes_to_split(text, doc, spacy_indexes):
+        spacy_tokens = [
+            t.text.strip().lower().strip(".,!?':;\"“”‘’") 
+            for t in doc 
+            if t.text.strip()
+        ]
+        split_tokens = [
+            w.strip().lower().strip(".,!?':;\"“”‘’") 
+            for w in text.split()
+        ]
+
+        matcher = difflib.SequenceMatcher(None, spacy_tokens, split_tokens)
+        spacy_to_split_map = {}
+
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                for offset in range(i2 - i1):
+                    spacy_to_split_map[i1 + offset] = j1 + offset
+
+        return [spacy_to_split_map[i] for i in spacy_indexes if i in spacy_to_split_map]
 
     nlp = spacy.load("en_core_web_sm")
     doc = nlp(text)
@@ -215,7 +236,13 @@ def extract_focus_words(text: str):
         filtered_focus.append((best["text"], best["index"]))
         i = j
 
-    return filtered_focus
+    spacy_indexes = [idx for _, idx in filtered_focus]
+    split_indexes = map_spacy_indexes_to_split(text, doc, spacy_indexes)
+
+        # Re-map focus words to use split-based indexes
+    final_output = [(word, split_index) for (word, _), split_index in zip(filtered_focus, split_indexes)]
+    return final_output
+
 
 def extract_minor_major_breaks(text: str):
     # --- Heuristic lists ---
