@@ -5,3 +5,4 @@ pydantic>=2.0.0,<3.0.0
 annotated-types>=0.4.0
 typing-extensions>=4.5.0
 regex
+difflib
