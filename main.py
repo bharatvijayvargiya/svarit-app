@@ -7,6 +7,7 @@ import spacy
 import difflib
 import regex as re
 from collections import defaultdict
+import pyphen
 
 # Load your model once at startup
 nlp = spacy.load("en_core_web_sm")
@@ -41,6 +42,12 @@ def minor_major_breaks(data: TextRequest):
     text = data.text
     breaks = extract_minor_major_breaks(text)  # Use the function from earlier
     return {"minor_breaks": breaks['minor_breaks'], "major_breaks": breaks['major_breaks']}
+
+@app.post("/hyphenated")
+def hyphenated_text(data:TextRequest):
+    text = data.text
+    hyphens = get_hyphenated_text(text)
+    return {"syllables": hyphens['syllables'], "word_map": hyphens['word_map']}
 
 def extract_focus_words(text: str):
     def map_spacy_indexes_to_split(text, doc, spacy_indexes):
@@ -243,8 +250,8 @@ def extract_focus_words(text: str):
     final_output = [(word, split_index) for (word, _), split_index in zip(filtered_focus, split_indexes)]
     return final_output
 
-
 def extract_minor_major_breaks(text: str):
+
     # --- Heuristic lists ---
     PREPOSITIONS = ['in', 'on', 'at', 'by', 'for', 'from', 'to', 'with', 'about',
         'over', 'under', 'into', 'onto', 'across', 'behind', 'through',
@@ -393,3 +400,20 @@ def extract_minor_major_breaks(text: str):
             'major_breaks': deduplicate(all_major_breaks)
         }
     return get_minor_and_major_break_indexes_with_words(text)
+
+def get_hyphenated_text(text: str):
+    dic = pyphen.Pyphen(lang='en')
+    syllables = 0
+    word_map = {}
+
+    for word in text.split():
+        # clean_word = word.strip("-\"'“”‘’")  # Strip common punctuation
+        hyphenated = dic.inserted(word)
+        count = hyphenated.count('-') + 1 if hyphenated else 1
+        syllables += count
+        word_map[word] = hyphenated
+
+    return {
+        syllables: syllables,
+        "word_map": word_map
+    }
