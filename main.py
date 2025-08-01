@@ -47,7 +47,7 @@ def minor_major_breaks(data: TextRequest):
 def hyphenated_text(data:TextRequest):
     text = data.text
     hyphens = get_hyphenated_text(text)
-    return {"syllables": hyphens['syllables'], "word_map": hyphens['word_map']}
+    return {"syllables": hyphens['syllable_count'], "word_map": hyphens['word_map']}
 
 def extract_focus_words(text: str):
     def map_spacy_indexes_to_split(text, doc, spacy_indexes):
@@ -414,6 +414,6 @@ def get_hyphenated_text(text: str):
         word_map[word] = hyphenated
 
     return {
-        syllables: syllables,
+        "syllable_count": syllables,
         "word_map": word_map
     }
